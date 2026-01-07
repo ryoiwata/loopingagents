@@ -2,7 +2,7 @@ import os
 import sys
 
 # Add root and src directories to Python path
-root_dir = os.path.abspath(os.path.dirname(__file__))
+root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(root_dir, "src"))
 sys.path.insert(0, root_dir)
 
@@ -12,7 +12,9 @@ from agent_core.tools.write_file import write_file  # noqa: E402
 def main():
     # Test 1: Overwriting an existing file
     print("Test 1: Overwriting existing file - lorem.txt")
-    result = write_file("calculator", "lorem.txt", "wait, this isn't lorem ipsum")
+    result = write_file(
+        "calculator", "lorem.txt", "wait, this isn't lorem ipsum"
+    )
     print(f"Result: {result}")
     if result.startswith("Error:"):
         print("✗ Failed to write file")
@@ -24,7 +26,11 @@ def main():
             if content == "wait, this isn't lorem ipsum":
                 print("✓ Content verified correctly")
             else:
-                print(f"✗ Content mismatch. Expected: 'wait, this isn't lorem ipsum', Got: '{content[:50]}...'")
+                expected = "wait, this isn't lorem ipsum"
+                print(
+                    f"✗ Content mismatch. Expected: '{expected}', "
+                    f"Got: '{content[:50]}...'"
+                )
     print()
 
     # Test 2: Writing to a sub-directory
@@ -47,14 +53,20 @@ def main():
                 if content == "lorem ipsum dolor sit amet":
                     print("✓ Content verified correctly")
                 else:
-                    print(f"✗ Content mismatch. Expected: 'lorem ipsum dolor sit amet', Got: '{content}'")
+                    expected = "lorem ipsum dolor sit amet"
+                    print(
+                        f"✗ Content mismatch. Expected: '{expected}', "
+                        f"Got: '{content}'"
+                    )
         else:
             print("✗ File was not created")
     print()
 
     # Test 3: Security guardrail - trying to write outside working directory
     print("Test 3: Security check - trying to write to /tmp/temp.txt")
-    result = write_file("calculator", "/tmp/temp.txt", "this should not be allowed")
+    result = write_file(
+        "calculator", "/tmp/temp.txt", "this should not be allowed"
+    )
     print(f"Result: {result}")
     if result.startswith("Error:") and "outside" in result:
         print("✓ Security check passed - file write was blocked")
@@ -70,4 +82,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
