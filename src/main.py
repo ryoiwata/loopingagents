@@ -22,18 +22,20 @@ def main():
     load_dotenv()
 
     api_key = os.environ.get("OPENAI_API_KEY")
-    model = os.environ.get("OPENAI_MODEL")
-
     client = OpenAI(api_key=api_key)
 
+    prompt = args.query
+    messages = [
+        {
+            "role": "user",
+            "content": prompt
+        }
+    ]
+
+    model = os.environ.get("OPENAI_MODEL")
     response = client.chat.completions.create(
         model=model,
-        messages=[
-            {
-                "role": "user",
-                "content": args.query
-            }
-        ]
+        messages=messages
     )
 
     print(response.choices[0].message.content)
