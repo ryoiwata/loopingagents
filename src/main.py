@@ -1,9 +1,24 @@
+import argparse
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
 
 
 def main():
+    parser = argparse.ArgumentParser(
+        description="Query OpenAI API with a custom prompt"
+    )
+    parser.add_argument(
+        "--query",
+        type=str,
+        default=(
+            """What are often overlooked tips for AI engineering?
+            Use one paragraph maximum."""
+        ),
+        help="The query/prompt to send to OpenAI API"
+    )
+    args = parser.parse_args()
+
     load_dotenv()
 
     api_key = os.environ.get("OPENAI_API_KEY")
@@ -16,10 +31,7 @@ def main():
         messages=[
             {
                 "role": "user",
-                "content": (
-                    "What are often overlooked tips for AI engineering? "
-                    "Use one paragraph maximum."
-                )
+                "content": args.query
             }
         ]
     )
