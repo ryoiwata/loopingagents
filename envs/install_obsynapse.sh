@@ -11,3 +11,9 @@ conda create -p ./loopingagents python=3.12 --yes
 
 # Activate the newly created environment
 conda activate ./loopingagents
+
+# Install python-dotenv: Library for loading environment variables from .env files
+conda install conda-forge::python-dotenv --yes
+
+# Install openai: Official OpenAI Python library for interacting with OpenAI's API
+conda install conda-forge::openai --yes
