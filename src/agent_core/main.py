@@ -16,7 +16,11 @@ if src_dir not in sys.path:
 from agent_core.providers.prompt_loader import (  # noqa: E402
     get_active_system_prompt
 )
-from agent_core.call_function import available_tools  # noqa: E402
+from agent_core.call_function import (  # noqa: E402
+    available_tools,
+    call_function,
+)
+from langchain_core.messages import ToolMessage  # noqa: E402
 
 
 def main():
@@ -96,42 +100,55 @@ def main():
     # Handle tool calls if present
     response_content = None
     if hasattr(response, "tool_calls") and response.tool_calls:
+        # Add the AI response with tool calls to message history
+        formatted_messages.append(response)
+
+        # Execute each tool call
         for tool_call in response.tool_calls:
-            # LangChain tool_calls can be dictionaries or ToolCall objects
-            # Handle both dictionary access and attribute access
+            # Call the function and get the result
+            result_dict = call_function(tool_call, verbose=args.verbose)
+
+            # Extract tool_call_id for ToolMessage
             if isinstance(tool_call, dict):
-                tool_name = (
-                    tool_call.get("name") or
-                    tool_call.get("function", {}).get("name", "unknown")
-                )
-                tool_args = (
-                    tool_call.get("args") or
-                    tool_call.get("function", {}).get("arguments", {})
+                tool_call_id = (
+                    tool_call.get("id") or
+                    tool_call.get("tool_call_id") or
+                    f"call_{id(tool_call)}"
                 )
             else:
-                # ToolCall object - try attribute access first, then dict
-                tool_name = getattr(tool_call, "name", None)
-                if tool_name is None and hasattr(tool_call, "get"):
-                    tool_name = tool_call.get("name", "unknown")
-                if tool_name is None:
-                    tool_name = "unknown"
+                tool_call_id = getattr(
+                    tool_call, "id",
+                    getattr(tool_call, "tool_call_id", f"call_{id(tool_call)}")
+                )
 
-                tool_args = getattr(tool_call, "args", None)
-                if tool_args is None and hasattr(tool_call, "get"):
-                    tool_args = tool_call.get("args", {})
-                if tool_args is None:
-                    tool_args = {}
+            # Create ToolMessage and add to message history
+            tool_message = ToolMessage(
+                content=result_dict["content"],
+                tool_call_id=tool_call_id
+            )
+            formatted_messages.append(tool_message)
 
-            # If args is a JSON string, parse it
-            if isinstance(tool_args, str):
-                try:
-                    tool_args = json.loads(tool_args)
-                except json.JSONDecodeError:
-                    pass
+            # Print result if verbose
+            if args.verbose:
+                print(f"-> {result_dict['content']}")
 
-            print(f"Calling function: {tool_name}({tool_args})")
-        # Set response_content to None to avoid printing summary
-        response_content = None
+        # Continue the conversation with tool results
+        # Invoke the model again with the updated message history
+        try:
+            response = llm_with_tools.invoke(formatted_messages)
+            # Extract content from the final response
+            response_content = response.content
+        except Exception as e:
+            # If temperature=0 is not supported, retry with default temp
+            if "temperature" in str(e).lower() and temperature == 0:
+                llm = ChatOpenAI(model=model)
+                llm_with_tools = llm.bind_tools(
+                    available_tools, tool_choice="auto"
+                )
+                response = llm_with_tools.invoke(formatted_messages)
+                response_content = response.content
+            else:
+                raise
     else:
         # Extract content from AIMessage
         response_content = response.content
