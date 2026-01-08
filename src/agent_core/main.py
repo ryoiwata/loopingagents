@@ -63,6 +63,17 @@ def main():
     # Format messages using the template
     formatted_messages = chat_template.format_messages(user_input=prompt)
 
+    # Print full messages list to console before API call
+    print("=" * 80)
+    print("Messages being sent to OpenAI API:")
+    print("=" * 80)
+    for i, msg in enumerate(formatted_messages, 1):
+        print(f"\nMessage {i}:")
+        print(f"  Type: {msg.type}")
+        print(f"  Content: {msg.content}")
+    print("=" * 80)
+    print()
+
     # Invoke the model
     try:
         response = llm.invoke(formatted_messages)

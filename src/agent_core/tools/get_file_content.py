@@ -1,5 +1,13 @@
 import os
-from config import MAX_CHARS
+import sys
+
+# Add src directory to Python path for imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+src_dir = os.path.normpath(os.path.join(current_dir, "..", ".."))
+if src_dir not in sys.path:
+    sys.path.insert(0, src_dir)
+
+from agent_core.providers.prompt_loader import get_settings  # noqa: E402
 
 
 def get_file_content(working_directory, file_path):
@@ -14,6 +22,9 @@ def get_file_content(working_directory, file_path):
         A string with file content or an error message prefixed with "Error:"
     """
     try:
+        # Load MAX_CHARS from settings
+        settings = get_settings()
+        MAX_CHARS = settings.get("MAX_CHARS", 10000)
         # Get absolute path of working_directory
         working_dir_abs = os.path.abspath(working_directory)
 
