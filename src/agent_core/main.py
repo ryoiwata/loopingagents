@@ -89,29 +89,41 @@ def main():
     logs_dir = "logs"
     os.makedirs(logs_dir, exist_ok=True)
 
-    # Generate dynamic filename with timestamp
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    log_filename = f"{timestamp}_session.json"
+    # Generate timestamped log filename (JSON format)
+    timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_filename = f"session_{timestamp_str}.json"
     log_file = os.path.join(logs_dir, log_filename)
 
     # Prepare log entry with all required fields
     log_entry = {
         "timestamp": datetime.now().isoformat(),
         "model": model,
+        "system_prompt": system_template,
         "prompt": prompt,
         "response": response_content,
         "usage": {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens
+            "prompt_tokens": (
+                prompt_tokens if prompt_tokens is not None else None
+            ),
+            "completion_tokens": (
+                completion_tokens if completion_tokens is not None else None
+            )
         }
     }
 
-    # Write JSON log entry to file
+    # Write pretty-printed JSON log entry to file
     with open(log_file, "w", encoding="utf-8") as f:
-        json.dump(log_entry, f, indent=2, ensure_ascii=False)
+        json.dump(log_entry, f, indent=4, ensure_ascii=False)
 
     # Handle verbose output
     if args.verbose:
+        # Show truncated system prompt
+        system_preview = (
+            system_template[:100] + "..."
+            if len(system_template) > 100
+            else system_template
+        )
+        print(f"System Prompt (truncated): {system_preview}")
         print(f"User prompt: {prompt}")
         if prompt_tokens is not None and completion_tokens is not None:
             print(f"Prompt tokens: {prompt_tokens}")
