@@ -5,7 +5,6 @@ import sys
 from datetime import datetime
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
 
 # Add src directory to Python path for imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -20,7 +19,11 @@ from agent_core.call_function import (  # noqa: E402
     available_tools,
     call_function,
 )
-from langchain_core.messages import ToolMessage  # noqa: E402
+from langchain_core.messages import (  # noqa: E402
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 
 
 def main():
@@ -52,12 +55,6 @@ def main():
     system_template, parameters = get_active_system_prompt()
     temperature = parameters.get("temperature", 0)
 
-    # Create ChatPromptTemplate from loaded system prompt
-    chat_template = ChatPromptTemplate.from_messages([
-        ("system", system_template),
-        ("human", "{user_input}"),
-    ])
-
     # Initialize LangChain ChatOpenAI model with parameters from YAML
     # Some models don't support temperature=0, so we'll use None (default) if 0
     llm_kwargs = {"model": model}
@@ -68,76 +65,42 @@ def main():
     # Bind tools to the model with auto tool selection
     llm_with_tools = llm.bind_tools(available_tools, tool_choice="auto")
 
-    # Format messages using the template
-    formatted_messages = chat_template.format_messages(user_input=prompt)
+    # Initialize conversation history with system message and user prompt
+    messages = [
+        SystemMessage(content=system_template),
+        HumanMessage(content=prompt),
+    ]
 
-    # Print full messages list to console before API call
-    print("=" * 80)
-    print("Messages being sent to OpenAI API:")
-    print("=" * 80)
-    for i, msg in enumerate(formatted_messages, 1):
-        print(f"\nMessage {i}:")
-        print(f"  Type: {msg.type}")
-        print(f"  Content: {msg.content}")
-    print("=" * 80)
-    print()
-
-    # Invoke the model with tools
-    try:
-        response = llm_with_tools.invoke(formatted_messages)
-    except Exception as e:
-        # If temperature=0 is not supported, retry with default temperature
-        if "temperature" in str(e).lower() and temperature == 0:
-            # Use default temperature
-            llm = ChatOpenAI(model=model)
-            llm_with_tools = llm.bind_tools(
-                available_tools, tool_choice="auto"
+    # Print initial messages if verbose
+    if args.verbose:
+        print("=" * 80)
+        print("Initial messages:")
+        print("=" * 80)
+        for i, msg in enumerate(messages, 1):
+            print(f"\nMessage {i}:")
+            print(f"  Type: {msg.type}")
+            content_preview = (
+                f"{msg.content[:200]}..."
+                if len(str(msg.content)) > 200
+                else str(msg.content)
             )
-            response = llm_with_tools.invoke(formatted_messages)
-        else:
-            raise
+            print(f"  Content: {content_preview}")
+        print("=" * 80)
+        print()
 
-    # Handle tool calls if present
+    # Agent loop with max 20 iterations
+    MAX_ITERATIONS = 20
     response_content = None
-    if hasattr(response, "tool_calls") and response.tool_calls:
-        # Add the AI response with tool calls to message history
-        formatted_messages.append(response)
+    total_prompt_tokens = 0
+    total_completion_tokens = 0
 
-        # Execute each tool call
-        for tool_call in response.tool_calls:
-            # Call the function and get the result
-            result_dict = call_function(tool_call, verbose=args.verbose)
+    for iteration in range(MAX_ITERATIONS):
+        if args.verbose:
+            print(f"\n--- Iteration {iteration + 1}/{MAX_ITERATIONS} ---")
 
-            # Extract tool_call_id for ToolMessage
-            if isinstance(tool_call, dict):
-                tool_call_id = (
-                    tool_call.get("id") or
-                    tool_call.get("tool_call_id") or
-                    f"call_{id(tool_call)}"
-                )
-            else:
-                tool_call_id = getattr(
-                    tool_call, "id",
-                    getattr(tool_call, "tool_call_id", f"call_{id(tool_call)}")
-                )
-
-            # Create ToolMessage and add to message history
-            tool_message = ToolMessage(
-                content=result_dict["content"],
-                tool_call_id=tool_call_id
-            )
-            formatted_messages.append(tool_message)
-
-            # Print result if verbose
-            if args.verbose:
-                print(f"-> {result_dict['content']}")
-
-        # Continue the conversation with tool results
-        # Invoke the model again with the updated message history
+        # Invoke the model with current messages
         try:
-            response = llm_with_tools.invoke(formatted_messages)
-            # Extract content from the final response
-            response_content = response.content
+            response = llm_with_tools.invoke(messages)
         except Exception as e:
             # If temperature=0 is not supported, retry with default temp
             if "temperature" in str(e).lower() and temperature == 0:
@@ -145,21 +108,75 @@ def main():
                 llm_with_tools = llm.bind_tools(
                     available_tools, tool_choice="auto"
                 )
-                response = llm_with_tools.invoke(formatted_messages)
-                response_content = response.content
+                response = llm_with_tools.invoke(messages)
             else:
                 raise
-    else:
-        # Extract content from AIMessage
-        response_content = response.content
 
-    # Extract token usage from response metadata
-    prompt_tokens = None
-    completion_tokens = None
-    if hasattr(response, "response_metadata") and response.response_metadata:
-        usage = response.response_metadata.get("token_usage", {})
-        prompt_tokens = usage.get("prompt_tokens")
-        completion_tokens = usage.get("completion_tokens")
+        # Capture model response: append to messages list
+        messages.append(response)
+
+        # Extract token usage and accumulate
+        if (hasattr(response, "response_metadata") and
+                response.response_metadata):
+            usage = response.response_metadata.get("token_usage", {})
+            total_prompt_tokens += usage.get("prompt_tokens", 0)
+            total_completion_tokens += usage.get("completion_tokens", 0)
+
+        # Handle tool calls if present
+        if hasattr(response, "tool_calls") and response.tool_calls:
+            # Execute each tool call
+            for tool_call in response.tool_calls:
+                # Call the function and get the result
+                result_dict = call_function(tool_call, verbose=args.verbose)
+
+                # Extract tool_call_id for ToolMessage
+                if isinstance(tool_call, dict):
+                    tool_call_id = (
+                        tool_call.get("id") or
+                        tool_call.get("tool_call_id") or
+                        f"call_{id(tool_call)}"
+                    )
+                else:
+                    tool_call_id = getattr(
+                        tool_call, "id",
+                        getattr(
+                            tool_call, "tool_call_id", f"call_{id(tool_call)}"
+                        )
+                    )
+
+                # Create ToolMessage and add to message history
+                tool_message = ToolMessage(
+                    content=result_dict["content"],
+                    tool_call_id=tool_call_id
+                )
+                messages.append(tool_message)
+
+                # Print result if verbose
+                if args.verbose:
+                    print(f"-> {result_dict['content']}")
+
+            # Continue loop to process tool results
+            continue
+        else:
+            # Final text answer (no tool calls) - extract content and break
+            response_content = response.content
+            if args.verbose:
+                print(f"\nFinal response: {response_content}")
+            break
+
+    # Check if we reached max iterations without a final answer
+    if response_content is None:
+        print(
+            "Error: Maximum iterations reached without a final answer.",
+            file=sys.stderr
+        )
+        sys.exit(1)
+
+    # Use accumulated token usage
+    prompt_tokens = total_prompt_tokens if total_prompt_tokens > 0 else None
+    completion_tokens = (
+        total_completion_tokens if total_completion_tokens > 0 else None
+    )
 
     # Create logs directory if it doesn't exist
     logs_dir = "logs"
