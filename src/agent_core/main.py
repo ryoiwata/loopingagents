@@ -1,9 +1,21 @@
 import argparse
 import json
 import os
+import sys
 from datetime import datetime
 from dotenv import load_dotenv
-from openai import OpenAI
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+
+# Add src directory to Python path for imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+src_dir = os.path.normpath(os.path.join(current_dir, ".."))
+if src_dir not in sys.path:
+    sys.path.insert(0, src_dir)
+
+from agent_core.providers.prompt_loader import (  # noqa: E402
+    get_active_system_prompt
+)
 
 
 def main():
@@ -28,24 +40,50 @@ def main():
 
     load_dotenv()
 
-    api_key = os.environ.get("OPENAI_API_KEY")
-    client = OpenAI(api_key=api_key)
-
     prompt = args.query
-    messages = [
-        {
-            "role": "user",
-            "content": prompt
-        }
-    ]
-
     model = os.environ.get("OPENAI_MODEL")
-    response = client.chat.completions.create(
-        model=model,
-        messages=messages
-    )
 
-    response_content = response.choices[0].message.content
+    # Load active system prompt and parameters from YAML
+    system_template, parameters = get_active_system_prompt()
+    temperature = parameters.get("temperature", 0)
+
+    # Create ChatPromptTemplate from loaded system prompt
+    chat_template = ChatPromptTemplate.from_messages([
+        ("system", system_template),
+        ("human", "{user_input}"),
+    ])
+
+    # Initialize LangChain ChatOpenAI model with parameters from YAML
+    # Some models don't support temperature=0, so we'll use None (default) if 0
+    llm_kwargs = {"model": model}
+    if temperature != 0:
+        llm_kwargs["temperature"] = temperature
+    llm = ChatOpenAI(**llm_kwargs)
+
+    # Format messages using the template
+    formatted_messages = chat_template.format_messages(user_input=prompt)
+
+    # Invoke the model
+    try:
+        response = llm.invoke(formatted_messages)
+    except Exception as e:
+        # If temperature=0 is not supported, retry with default temperature
+        if "temperature" in str(e).lower() and temperature == 0:
+            llm = ChatOpenAI(model=model)  # Use default temperature
+            response = llm.invoke(formatted_messages)
+        else:
+            raise
+
+    # Extract content from AIMessage
+    response_content = response.content
+
+    # Extract token usage from response metadata
+    prompt_tokens = None
+    completion_tokens = None
+    if hasattr(response, "response_metadata") and response.response_metadata:
+        usage = response.response_metadata.get("token_usage", {})
+        prompt_tokens = usage.get("prompt_tokens")
+        completion_tokens = usage.get("completion_tokens")
 
     # Create logs directory if it doesn't exist
     logs_dir = "logs"
@@ -63,16 +101,8 @@ def main():
         "prompt": prompt,
         "response": response_content,
         "usage": {
-            "prompt_tokens": (
-                response.usage.prompt_tokens
-                if response.usage is not None
-                else None
-            ),
-            "completion_tokens": (
-                response.usage.completion_tokens
-                if response.usage is not None
-                else None
-            )
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens
         }
     }
 
@@ -83,9 +113,9 @@ def main():
     # Handle verbose output
     if args.verbose:
         print(f"User prompt: {prompt}")
-        if response.usage is not None:
-            print(f"Prompt tokens: {response.usage.prompt_tokens}")
-            print(f"Response tokens: {response.usage.completion_tokens}")
+        if prompt_tokens is not None and completion_tokens is not None:
+            print(f"Prompt tokens: {prompt_tokens}")
+            print(f"Response tokens: {completion_tokens}")
         else:
             print("Prompt tokens: N/A")
             print("Response tokens: N/A")
