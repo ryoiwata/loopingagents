@@ -6,15 +6,18 @@ run_python_file_schema = {
     "type": "function",
     "function": {
         "name": "run_python_file",
-        "description": "Executes a Python file.",
+        "description": (
+            "Executes a specified Python script. Use this tool immediately "
+            "whenever the user asks to 'run', 'execute', or 'start' a .py file."
+        ),
         "parameters": {
             "type": "object",
             "properties": {
                 "file_path": {
                     "type": "string",
                     "description": (
-                        "Python file path to execute, relative to the "
-                        "working directory"
+                        "The relative path of the Python script to run. "
+                        "Must end with .py"
                     ),
                 },
                 "args": {

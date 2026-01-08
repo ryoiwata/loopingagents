@@ -61,8 +61,8 @@ def main():
         llm_kwargs["temperature"] = temperature
     llm = ChatOpenAI(**llm_kwargs)
 
-    # Bind tools to the model
-    llm_with_tools = llm.bind_tools(available_tools)
+    # Bind tools to the model with auto tool selection
+    llm_with_tools = llm.bind_tools(available_tools, tool_choice="auto")
 
     # Format messages using the template
     formatted_messages = chat_template.format_messages(user_input=prompt)
@@ -84,8 +84,11 @@ def main():
     except Exception as e:
         # If temperature=0 is not supported, retry with default temperature
         if "temperature" in str(e).lower() and temperature == 0:
-            llm = ChatOpenAI(model=model)  # Use default temperature
-            llm_with_tools = llm.bind_tools(available_tools)
+            # Use default temperature
+            llm = ChatOpenAI(model=model)
+            llm_with_tools = llm.bind_tools(
+                available_tools, tool_choice="auto"
+            )
             response = llm_with_tools.invoke(formatted_messages)
         else:
             raise
