@@ -16,6 +16,7 @@ if src_dir not in sys.path:
 from agent_core.providers.prompt_loader import (  # noqa: E402
     get_active_system_prompt
 )
+from agent_core.call_function import available_tools  # noqa: E402
 
 
 def main():
@@ -60,6 +61,9 @@ def main():
         llm_kwargs["temperature"] = temperature
     llm = ChatOpenAI(**llm_kwargs)
 
+    # Bind tools to the model
+    llm_with_tools = llm.bind_tools(available_tools)
+
     # Format messages using the template
     formatted_messages = chat_template.format_messages(user_input=prompt)
 
@@ -74,19 +78,60 @@ def main():
     print("=" * 80)
     print()
 
-    # Invoke the model
+    # Invoke the model with tools
     try:
-        response = llm.invoke(formatted_messages)
+        response = llm_with_tools.invoke(formatted_messages)
     except Exception as e:
         # If temperature=0 is not supported, retry with default temperature
         if "temperature" in str(e).lower() and temperature == 0:
             llm = ChatOpenAI(model=model)  # Use default temperature
-            response = llm.invoke(formatted_messages)
+            llm_with_tools = llm.bind_tools(available_tools)
+            response = llm_with_tools.invoke(formatted_messages)
         else:
             raise
 
-    # Extract content from AIMessage
-    response_content = response.content
+    # Handle tool calls if present
+    response_content = None
+    if hasattr(response, "tool_calls") and response.tool_calls:
+        for tool_call in response.tool_calls:
+            # LangChain tool_calls can be dictionaries or ToolCall objects
+            # Handle both dictionary access and attribute access
+            if isinstance(tool_call, dict):
+                tool_name = (
+                    tool_call.get("name") or
+                    tool_call.get("function", {}).get("name", "unknown")
+                )
+                tool_args = (
+                    tool_call.get("args") or
+                    tool_call.get("function", {}).get("arguments", {})
+                )
+            else:
+                # ToolCall object - try attribute access first, then dict
+                tool_name = getattr(tool_call, "name", None)
+                if tool_name is None and hasattr(tool_call, "get"):
+                    tool_name = tool_call.get("name", "unknown")
+                if tool_name is None:
+                    tool_name = "unknown"
+
+                tool_args = getattr(tool_call, "args", None)
+                if tool_args is None and hasattr(tool_call, "get"):
+                    tool_args = tool_call.get("args", {})
+                if tool_args is None:
+                    tool_args = {}
+
+            # If args is a JSON string, parse it
+            if isinstance(tool_args, str):
+                try:
+                    tool_args = json.loads(tool_args)
+                except json.JSONDecodeError:
+                    pass
+
+            print(f"Calling function: {tool_name}({tool_args})")
+        # Set response_content to None to avoid printing summary
+        response_content = None
+    else:
+        # Extract content from AIMessage
+        response_content = response.content
 
     # Extract token usage from response metadata
     prompt_tokens = None
@@ -143,9 +188,13 @@ def main():
             print("Prompt tokens: N/A")
             print("Response tokens: N/A")
         print()
-        print(response_content)
+        # Only print response_content if it exists (not None for tool calls)
+        if response_content is not None:
+            print(response_content)
     else:
-        print(response_content)
+        # Only print response_content if it exists (not None for tool calls)
+        if response_content is not None:
+            print(response_content)
 
 
 if __name__ == "__main__":

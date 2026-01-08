@@ -2,6 +2,36 @@ import os
 import subprocess
 
 
+run_python_file_schema = {
+    "type": "function",
+    "function": {
+        "name": "run_python_file",
+        "description": "Executes a Python file.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": (
+                        "Python file path to execute, relative to the "
+                        "working directory"
+                    ),
+                },
+                "args": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Optional list of command-line arguments to pass "
+                        "to the script"
+                    ),
+                },
+            },
+            "required": ["file_path"],
+        },
+    },
+}
+
+
 def run_python_file(working_directory, file_path, args=None):
     """
     Execute a Python file with security guardrails.

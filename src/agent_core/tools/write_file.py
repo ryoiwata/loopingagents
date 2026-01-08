@@ -1,6 +1,31 @@
 import os
 
 
+write_file_schema = {
+    "type": "function",
+    "function": {
+        "name": "write_file",
+        "description": "Writes or overwrites content to a file.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": (
+                        "File path to write, relative to the working directory"
+                    ),
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Content string to write to the file",
+                },
+            },
+            "required": ["file_path", "content"],
+        },
+    },
+}
+
+
 def write_file(working_directory, file_path, content):
     """
     Write content to a file with security guardrails.

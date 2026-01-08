@@ -10,6 +10,28 @@ if src_dir not in sys.path:
 from agent_core.providers.prompt_loader import get_settings  # noqa: E402
 
 
+get_file_content_schema = {
+    "type": "function",
+    "function": {
+        "name": "get_file_content",
+        "description": "Reads the content of a file.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": (
+                        "File path to read, relative to the working "
+                        "directory"
+                    ),
+                },
+            },
+            "required": ["file_path"],
+        },
+    },
+}
+
+
 def get_file_content(working_directory, file_path):
     """
     Get the content of a file with security guardrails.
@@ -53,7 +75,8 @@ def get_file_content(working_directory, file_path):
         # Check if target_file is a regular file
         if not os.path.isfile(target_file):
             return (
-                f'Error: File not found or is not a regular file: "{file_path}"'
+                f'Error: File not found or is not a regular file: '
+                f'"{file_path}"'
             )
 
         # Read file content with MAX_CHARS limit
@@ -71,4 +94,3 @@ def get_file_content(working_directory, file_path):
 
     except Exception as e:
         return f"Error: {str(e)}"
-

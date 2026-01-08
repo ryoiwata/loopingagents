@@ -2,6 +2,31 @@ import argparse
 import os
 
 
+get_files_info_schema = {
+    "type": "function",
+    "function": {
+        "name": "get_files_info",
+        "description": (
+            "Lists files in a specified directory relative to the working "
+            "directory, providing file size and directory status"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "directory": {
+                    "type": "string",
+                    "description": (
+                        "Directory path to list files from, relative to the "
+                        "working directory (default is '.')"
+                    ),
+                },
+            },
+            "required": [],
+        },
+    },
+}
+
+
 def get_files_info(working_directory, directory="."):
     """
     Get information about files in a directory with security guardrails.
